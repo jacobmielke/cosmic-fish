@@ -1,0 +1,23 @@
+[gd_scene format=3 uid="uid://y4v45ly0evpo"]
+
+[ext_resource type="Script" uid="uid://v82nehfmkskw" path="res://scripts/new_script.gd" id="1_37g75"]
+[ext_resource type="Script" uid="uid://cfmvvavb4afqi" path="res://scripts/IsometricWorld.gd" id="1_yokrj"]
+[ext_resource type="Resource" uid="uid://cr3bkmn3h3kr2" path="res://scenes/world/test_world.tres" id="2_ujbsv"]
+
+[node name="Test" type="Node2D" unique_id=1754335545 node_paths=PackedStringArray("world")]
+script = ExtResource("1_37g75")
+world = NodePath("IsometricWorld")
+
+[node name="Camera2D" type="Camera2D" parent="." unique_id=351207082]
+position = Vector2(4, 38)
+zoom = Vector2(1.83, 1.83)
+limit_enabled = false
+limit_left = 0
+limit_top = 0
+limit_right = 1152
+limit_bottom = 648
+
+[node name="IsometricWorld" type="Node2D" parent="." unique_id=838856895]
+script = ExtResource("1_yokrj")
+map_data = ExtResource("2_ujbsv")
+metadata/_custom_type_script = "uid://cfmvvavb4afqi"

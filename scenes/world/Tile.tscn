@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://neanla2infn4"]
+
+[ext_resource type="Script" uid="uid://canlvbbb0o65n" path="res://scripts/Tile.gd" id="1_wv5go"]
+
+[node name="Tile" type="Node2D" unique_id=1759895699]
+script = ExtResource("1_wv5go")

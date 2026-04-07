@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="DetailType" format=3 uid="uid://by7nh2shewt8s"]
+
+[ext_resource type="Script" uid="uid://dydgum2j7yj1y" path="res://addons/iso_painter/DetailType.gd" id="1_4p3hq"]
+[ext_resource type="Texture2D" uid="uid://cikfi1gseb08" path="res://assets/tiles/Assets free version.png" id="2_c1g68"]
+
+[sub_resource type="AtlasTexture" id="AtlasTexture_n2y83"]
+atlas = ExtResource("2_c1g68")
+region = Rect2(96, 64, 32, 80)
+
+[resource]
+script = ExtResource("1_4p3hq")
+name = "Tree0"
+editor_color = Color(0.09019608, 1, 0.58431375, 1)
+editor_label = "T0"
+sprite = SubResource("AtlasTexture_n2y83")
+metadata/_custom_type_script = "uid://dydgum2j7yj1y"
