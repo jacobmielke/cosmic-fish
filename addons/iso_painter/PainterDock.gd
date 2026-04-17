@@ -9,23 +9,30 @@ const MapData = preload("res://addons/iso_painter/IsoMapData.gd")
 signal map_changed()
 signal save_requested()
 
-enum BrushMode { TERRAIN, DETAIL }
+enum BrushMode  { TERRAIN, DETAIL, SCULPT }
+enum SculptMode { RAISE, LOWER, FLATTEN }
 
 var brush_mode        := BrushMode.TERRAIN
-var current_height    := 0
+var current_height    := 0.0
 var current_block     := 0
 var current_tile_type := 0
 var current_detail    := 0
 var brush_size        := 1
 var erasing           := false
 
+var sculpt_mode       := SculptMode.RAISE
+var sculpt_strength   := 0.1   # height change per stroke pass
+var sculpt_target     := 0.0   # used only by FLATTEN
+
 var _map_data: Resource
 var _grid_canvas: _GridCanvas
 var _file_label: Label
 var _terrain_options: VBoxContainer
 var _detail_options: VBoxContainer
+var _sculpt_options: VBoxContainer
 var _terrain_btn: OptionButton
 var _detail_btn: OptionButton
+var _sculpt_target_row: Control   # shown/hidden when sculpt mode = FLATTEN
 
 
 func _init() -> void:
@@ -64,10 +71,12 @@ func _init() -> void:
 	var mode_btn = OptionButton.new()
 	mode_btn.add_item("Terrain")
 	mode_btn.add_item("Detail")
+	mode_btn.add_item("Sculpt")
 	mode_btn.item_selected.connect(func(idx):
 		brush_mode = idx as BrushMode
 		_terrain_options.visible = (brush_mode == BrushMode.TERRAIN)
-		_detail_options.visible = (brush_mode == BrushMode.DETAIL)
+		_detail_options.visible  = (brush_mode == BrushMode.DETAIL)
+		_sculpt_options.visible  = (brush_mode == BrushMode.SCULPT)
 	)
 	add_child(mode_btn)
 
@@ -97,19 +106,21 @@ func _init() -> void:
 
 	add_child(HSeparator.new())
 
-	# -- Terrain options
+	# -------------------------------------------------------------------------
+	# Terrain options
+	# -------------------------------------------------------------------------
 	_terrain_options = VBoxContainer.new()
 	add_child(_terrain_options)
 
 	var h_label = Label.new()
-	h_label.text = "Height (0-8)"
+	h_label.text = "Height (0.0 – 8.0)"
 	_terrain_options.add_child(h_label)
 
 	var h_spin = SpinBox.new()
-	h_spin.min_value = 0
-	h_spin.max_value = 8
-	h_spin.step      = 1
-	h_spin.value_changed.connect(func(v): current_height = int(v))
+	h_spin.min_value = 0.0
+	h_spin.max_value = 8.0
+	h_spin.step      = 0.1
+	h_spin.value_changed.connect(func(v): current_height = v)
 	_terrain_options.add_child(h_spin)
 
 	_terrain_options.add_child(HSeparator.new())
@@ -134,7 +145,9 @@ func _init() -> void:
 	_terrain_btn.item_selected.connect(func(idx): current_block = idx)
 	_terrain_options.add_child(_terrain_btn)
 
-	# -- Detail options (hidden by default)
+	# -------------------------------------------------------------------------
+	# Detail options (hidden by default)
+	# -------------------------------------------------------------------------
 	_detail_options = VBoxContainer.new()
 	_detail_options.visible = false
 	add_child(_detail_options)
@@ -146,6 +159,57 @@ func _init() -> void:
 	_detail_btn = OptionButton.new()
 	_detail_btn.item_selected.connect(func(idx): current_detail = idx)
 	_detail_options.add_child(_detail_btn)
+
+	# -------------------------------------------------------------------------
+	# Sculpt options (hidden by default)
+	# -------------------------------------------------------------------------
+	_sculpt_options = VBoxContainer.new()
+	_sculpt_options.visible = false
+	add_child(_sculpt_options)
+
+	var sm_label = Label.new()
+	sm_label.text = "Sculpt Mode"
+	_sculpt_options.add_child(sm_label)
+
+	var sm_btn = OptionButton.new()
+	sm_btn.add_item("▲  Raise")
+	sm_btn.add_item("▼  Lower")
+	sm_btn.add_item("—  Flatten")
+	sm_btn.item_selected.connect(func(idx):
+		sculpt_mode = idx as SculptMode
+		_sculpt_target_row.visible = (sculpt_mode == SculptMode.FLATTEN)
+	)
+	_sculpt_options.add_child(sm_btn)
+
+	_sculpt_options.add_child(HSeparator.new())
+
+	var str_label = Label.new()
+	str_label.text = "Strength (per stroke)"
+	_sculpt_options.add_child(str_label)
+
+	var str_spin = SpinBox.new()
+	str_spin.min_value = 0.1
+	str_spin.max_value = 2.0
+	str_spin.step      = 0.1
+	str_spin.value     = 0.1
+	str_spin.value_changed.connect(func(v): sculpt_strength = v)
+	_sculpt_options.add_child(str_spin)
+
+	# Target height — only relevant for Flatten
+	_sculpt_target_row = VBoxContainer.new()
+	_sculpt_target_row.visible = false
+	_sculpt_options.add_child(_sculpt_target_row)
+
+	var tgt_label = Label.new()
+	tgt_label.text = "Target Height"
+	_sculpt_target_row.add_child(tgt_label)
+
+	var tgt_spin = SpinBox.new()
+	tgt_spin.min_value = 0.0
+	tgt_spin.max_value = 8.0
+	tgt_spin.step      = 0.1
+	tgt_spin.value_changed.connect(func(v): sculpt_target = v)
+	_sculpt_target_row.add_child(tgt_spin)
 
 	add_child(HSeparator.new())
 
@@ -162,6 +226,11 @@ func _init() -> void:
 	clear_btn.pressed.connect(_on_clear)
 	action_row.add_child(clear_btn)
 	add_child(action_row)
+
+	var water_btn = Button.new()
+	water_btn.text = "Rebuild Water Bodies"
+	water_btn.pressed.connect(_on_rebuild_water)
+	add_child(water_btn)
 
 
 # ---------------------------------------------------------------------------
@@ -216,19 +285,46 @@ func _on_cell_painted(cell: Vector2i) -> void:
 	if not _map_data:
 		return
 	for c in _get_brush_cells(cell):
-		if brush_mode == BrushMode.TERRAIN:
-			_map_data.set_cell(c, current_height, current_block, current_tile_type)
-		else:
-			_map_data.set_detail(c, current_detail)
+		match brush_mode:
+			BrushMode.TERRAIN:
+				_map_data.set_cell(c, current_height, current_block, current_tile_type)
+			BrushMode.DETAIL:
+				_map_data.set_detail(c, current_detail)
+			BrushMode.SCULPT:
+				_sculpt_cell(c)
 	_grid_canvas.queue_redraw()
 	map_changed.emit()
+
+
+func _sculpt_cell(c: Vector2i) -> void:
+	# Only sculpt cells that already exist on the map
+	var data = _map_data.get_cell(c)
+	if data.is_empty():
+		return
+	var old_h: float = data.get("height", 0.0)
+	var terrain: int  = data.get("terrain", 0)
+	var ttype: int    = data.get("tile_type", 0)
+	var new_h: float
+	match sculpt_mode:
+		SculptMode.RAISE:
+			new_h = clampf(snappedf(old_h + sculpt_strength, 0.1), 0.0, 8.0)
+		SculptMode.LOWER:
+			new_h = clampf(snappedf(old_h - sculpt_strength, 0.1), 0.0, 8.0)
+		SculptMode.FLATTEN:
+			# Move toward target by at most sculpt_strength per stroke
+			var diff = sculpt_target - old_h
+			if abs(diff) <= sculpt_strength:
+				new_h = sculpt_target
+			else:
+				new_h = clampf(snappedf(old_h + sign(diff) * sculpt_strength, 0.1), 0.0, 8.0)
+	_map_data.set_cell(c, new_h, terrain, ttype)
 
 
 func _on_cell_erased(cell: Vector2i) -> void:
 	if not _map_data:
 		return
 	for c in _get_brush_cells(cell):
-		if brush_mode == BrushMode.TERRAIN:
+		if brush_mode == BrushMode.TERRAIN or brush_mode == BrushMode.SCULPT:
 			_map_data.erase_cell(c)
 		else:
 			_map_data.erase_detail(c)
@@ -241,6 +337,15 @@ func _on_clear() -> void:
 		return
 	_map_data.clear()
 	_grid_canvas.queue_redraw()
+	map_changed.emit()
+
+
+func _on_rebuild_water() -> void:
+	if not _map_data:
+		return
+	_map_data.rebuild_water_bodies()
+	var n = _map_data.water_bodies.size() if _map_data.water_bodies else 0
+	print("Rebuilt water bodies: ", n)
 	map_changed.emit()
 
 
@@ -290,7 +395,7 @@ class _GridCanvas extends Control:
 				continue
 			var data = cell_data[cell]
 			var tidx = data.get("terrain", 0)
-			var h = data.get("height", 0)
+			var h: float = data.get("height", 0.0)
 
 			var col = Color.WHITE
 			if tidx >= 0 and tidx < terrain_types.size() and terrain_types[tidx]:
@@ -302,7 +407,7 @@ class _GridCanvas extends Control:
 			_draw_diamond_outline(pos, hw, hh, Color(0, 0, 0, 0.3), 1.0)
 
 			if h > 0:
-				draw_string(get_theme_default_font(), pos + Vector2(-4, 4), str(h),
+				draw_string(get_theme_default_font(), pos + Vector2(-4, 4), "%.1f" % h,
 					HORIZONTAL_ALIGNMENT_CENTER, -1, 10, Color(1, 1, 1, 0.7))
 
 		# Draw detail markers (culled)

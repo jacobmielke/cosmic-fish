@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="DetailType" format=3 uid="uid://dhmjofsfktbhb"]
+
+[ext_resource type="Script" uid="uid://dydgum2j7yj1y" path="res://addons/iso_painter/DetailType.gd" id="1_uvusm"]
+
+[resource]
+script = ExtResource("1_uvusm")
+name = "Rock0"
+editor_color = Color(0.43152317, 0.71481174, 0.62278336, 1)
+editor_label = "R0"
+metadata/_custom_type_script = "uid://dydgum2j7yj1y"

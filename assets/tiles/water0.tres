@@ -1,16 +1,10 @@
 [gd_resource type="Resource" script_class="TerrainType" format=3 uid="uid://6u3iwu24tm3q"]
 
 [ext_resource type="Script" uid="uid://3holhyc85xhm" path="res://addons/iso_painter/TerrainType.gd" id="1_0aylw"]
-[ext_resource type="Texture2D" uid="uid://cikfi1gseb08" path="res://assets/tiles/Assets free version.png" id="2_1xgmv"]
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_t2qxe"]
-atlas = ExtResource("2_1xgmv")
-region = Rect2(64, 64, 32, 32)
 
 [resource]
 script = ExtResource("1_0aylw")
 name = "Water0"
 editor_color = Color(0, 1, 1, 1)
 is_water = true
-sprite = SubResource("AtlasTexture_t2qxe")
 metadata/_custom_type_script = "uid://3holhyc85xhm"

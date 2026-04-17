@@ -1,10 +1,10 @@
 extends Node
 
 ## CastingManager
-## Handles the full cast flow:
-##   1. Player clicks a water tile  → ring starts expanding
-##   2. Ring grows outward one step at a time
-##   3. Player presses cast button  → locks in radius, resolves fish catch
+## Arcade-style casting minigame:
+##   1. Player holds a water tile  → casting starts
+##   2. An outlined ring of water tiles smoothly pulses large→small→large…
+##   3. Player clicks again to lock in — smaller radius = better catch
 ##
 ## Signals:
 ##   cast_confirmed(center_cell, radius, water_cells)
@@ -14,31 +14,63 @@ signal cast_confirmed(center_cell, radius, water_cells)
 signal cast_cancelled
 
 # -- Config
-@export var ring_interval:  float = 0.6   # seconds between ring expansions
-@export var max_radius:     int   = 4     # how far the ring can grow
-@export var ring_color:     Color = Color(0.3, 0.85, 1.0, 0.5)
-@export var center_color:   Color = Color(1.0, 0.9, 0.2, 0.7)
+@export var pulse_speed:    float = 3.0   # radius units per second
+@export var max_radius:     int   = 4     # ring starts here
+@export var outline_color:  Color = Color(1.0, 1.0, 1.0, 1.0)
+@export var outline_width:  float = 8.0
 
 # -- References
 @onready var world: Node = $"../IsometricWorld"
 
 # -- State
 enum State { IDLE, CASTING }
-var _state:        State    = State.IDLE
-var _center_cell:  Vector2i = Vector2i.ZERO
-var _current_radius: int    = 0
-var _timer:        float    = 0.0
-var _highlighted:  Array    = []   # currently highlighted cells
+var _state:          State    = State.IDLE
+var _center_cell:    Vector2i = Vector2i.ZERO
+var _radius_f:       float    = 0.0
+var _shrinking:      bool     = true
+var _prev_ring:      int      = -1
+
+# -- Outline overlay (drawn on top of everything)
+var _overlay: Node2D
+var _border_edges: Array = [] # Array of [Vector2i cell, Vector2i outside_dir]
+
+
+func _ready() -> void:
+	_overlay = Node2D.new()
+	_overlay.z_index = 4096
+	_overlay.z_as_relative = false
+	_overlay.draw.connect(_draw_overlay)
+	_overlay.visible = false
+	# Defer adding to world so @onready has resolved
+	call_deferred("_add_overlay")
+
+
+func _add_overlay() -> void:
+	if world:
+		world.add_child(_overlay)
 
 
 func _process(delta: float) -> void:
 	if _state != State.CASTING:
 		return
 
-	_timer += delta
-	if _timer >= ring_interval:
-		_timer = 0.0
-		_expand_ring()
+	if _shrinking:
+		_radius_f -= pulse_speed * delta
+		if _radius_f <= 0.0:
+			_radius_f = 0.0
+			_shrinking = false
+	else:
+		_radius_f += pulse_speed * delta
+		if _radius_f >= float(max_radius):
+			_radius_f = float(max_radius)
+			_shrinking = true
+
+	var ring = int(round(_radius_f))
+	if ring != _prev_ring:
+		_prev_ring = ring
+		_refresh_edge(ring)
+
+	_overlay.queue_redraw()
 
 
 # ---------------------------------------------------------------------------
@@ -47,26 +79,27 @@ func _process(delta: float) -> void:
 
 func on_tile_clicked(tile: Node) -> void:
 	if _state == State.CASTING:
-		# Clicking again cancels
-		_cancel()
+		confirm_cast()
 		return
 
 	if not world.is_water(tile.cell):
-		return  # only start cast on water
+		return
 
 	_begin_cast(tile.cell)
 
 
 # ---------------------------------------------------------------------------
-# Cast button — call this from your UI
+# Cast button — locks in the current radius
 # ---------------------------------------------------------------------------
 
 func confirm_cast() -> void:
 	if _state != State.CASTING:
 		return
 
-	var water_cells = _highlighted.filter(func(c): return world.is_water(c))
-	emit_signal("cast_confirmed", _center_cell, _current_radius, water_cells)
+	var radius = int(round(_radius_f))
+	var filled = _get_filled_cells(_center_cell, radius)
+	var water_cells = filled.filter(func(c): return world.is_water(c))
+	emit_signal("cast_confirmed", _center_cell, radius, water_cells)
 	_end_cast()
 
 
@@ -75,42 +108,34 @@ func confirm_cast() -> void:
 # ---------------------------------------------------------------------------
 
 func _begin_cast(center: Vector2i) -> void:
-	_state          = State.CASTING
-	_center_cell    = center
-	_current_radius = 0
-	_timer          = 0.0
-	_highlighted    = []
-
-	world.clear_highlights()
-	_highlight_ring(0)   # light up the center tile immediately
+	_state       = State.CASTING
+	_center_cell = center
+	_radius_f    = float(max_radius)
+	_shrinking   = true
+	_prev_ring   = -1
+	_overlay.visible = true
 
 
-func _expand_ring() -> void:
-	_current_radius += 1
+func _refresh_edge(radius: int) -> void:
+	var water_in_area: Dictionary = {}
+	for c in _get_filled_cells(_center_cell, radius):
+		if world.is_water(c) and world.get_tile(c) != null:
+			water_in_area[c] = true
 
-	if _current_radius > max_radius:
-		# Reached max — auto confirm or loop back, your choice
-		confirm_cast()
-		return
-
-	_highlight_ring(_current_radius)
-
-
-func _highlight_ring(radius: int) -> void:
-	var new_cells = _get_ring_cells(_center_cell, radius)
-	for c in new_cells:
-		if world.get_tile(c) != null:
-			_highlighted.append(c)
-
-	# Centre tile gets a different colour
-	var col = center_color if radius == 0 else ring_color
-	world.highlight_cells(new_cells, col)
+	# Store each individual border segment as [cell, outside_direction]
+	_border_edges = []
+	var dirs = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+	for c in water_in_area:
+		for d in dirs:
+			if not water_in_area.has(c + d):
+				_border_edges.append([c, d])
 
 
 func _end_cast() -> void:
 	_state = State.IDLE
-	world.clear_highlights()
-	_highlighted = []
+	_prev_ring = -1
+	_border_edges = []
+	_overlay.visible = false
 
 
 func _cancel() -> void:
@@ -119,16 +144,73 @@ func _cancel() -> void:
 
 
 # ---------------------------------------------------------------------------
-# Ring cell math (Chebyshev — gives diamond rings in iso space)
+# Overlay drawing — outlines rendered on top of all tiles
 # ---------------------------------------------------------------------------
 
-func _get_ring_cells(center: Vector2i, radius: int) -> Array:
-	if radius == 0:
-		return [center]
+func _draw_overlay() -> void:
+	if _state != State.CASTING or _border_edges.is_empty():
+		return
 
+	var frac = abs(_radius_f - round(_radius_f))
+	var alpha = lerpf(outline_color.a, outline_color.a * 0.25, frac * 2.0)
+	var col = Color(outline_color.r, outline_color.g, outline_color.b, alpha)
+
+	# Diamond vertices (local to each tile)
+	var hw = world.map_data.tile_width / 2.0
+	var hh = world.map_data.tile_height / 2.0
+	var verts = [
+		Vector2(0, -hh),  # top
+		Vector2(hw, 0),   # right
+		Vector2(0, hh),   # bottom
+		Vector2(-hw, 0),  # left
+	]
+	# Midpoint of each edge — used to match direction to edge
+	var mids: Array[Vector2] = []
+	for i in 4:
+		mids.append((verts[i] + verts[(i + 1) % 4]) / 2.0)
+
+	# Get current iso basis for direction→screen mapping
+	var sample = world.get_tile(_center_cell)
+	if not sample:
+		return
+	var iso_x = sample.iso_x
+	var iso_y = sample.iso_y
+
+	for entry in _border_edges:
+		var c: Vector2i = entry[0]
+		var d: Vector2i = entry[1]
+		var t = world.get_tile(c)
+		if not t:
+			continue
+		var pos = t.get_base_position()
+
+		# Screen-space offset toward the outside neighbor
+		var offset = float(d.x) * iso_x + float(d.y) * iso_y
+
+		# Find which diamond edge faces that direction
+		var best_i = 0
+		var best_dot = -INF
+		for i in 4:
+			var dot = mids[i].dot(offset)
+			if dot > best_dot:
+				best_dot = dot
+				best_i = i
+
+		_overlay.draw_line(
+			pos + verts[best_i],
+			pos + verts[(best_i + 1) % 4],
+			col, outline_width, true
+		)
+
+
+# ---------------------------------------------------------------------------
+# Cell math (Chebyshev distance)
+# ---------------------------------------------------------------------------
+
+func _get_filled_cells(center: Vector2i, radius: int) -> Array:
 	var cells := []
 	for x in range(-radius, radius + 1):
 		for y in range(-radius, radius + 1):
-			if maxi(absi(x), absi(y)) == radius:
+			if maxi(absi(x), absi(y)) <= radius:
 				cells.append(center + Vector2i(x, y))
 	return cells

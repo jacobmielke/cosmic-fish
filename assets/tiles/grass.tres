@@ -1,16 +1,9 @@
 [gd_resource type="Resource" script_class="TerrainType" format=3 uid="uid://cqqp4t0ixkouf"]
 
 [ext_resource type="Script" uid="uid://3holhyc85xhm" path="res://addons/iso_painter/TerrainType.gd" id="1_bx3g3"]
-[ext_resource type="Texture2D" uid="uid://cikfi1gseb08" path="res://assets/tiles/Assets free version.png" id="2_m4afj"]
-
-[sub_resource type="AtlasTexture" id="AtlasTexture_b2aii"]
-atlas = ExtResource("2_m4afj")
-region = Rect2(32, 64, 32, 32)
 
 [resource]
 script = ExtResource("1_bx3g3")
 name = "Grass"
-editor_color = Color(0, 1, 0, 1)
-side_color = Color(3.3691526e-06, 0.8922106, 0.4097661, 1)
-sprite = SubResource("AtlasTexture_b2aii")
+editor_color = Color(0.34509805, 0.4745098, 0.28235295, 1)
 metadata/_custom_type_script = "uid://3holhyc85xhm"
