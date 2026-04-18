@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="TerrainType" format=3 uid="uid://c0gvwts0qt5xx"]
+
+[ext_resource type="Script" uid="uid://3holhyc85xhm" path="res://addons/iso_painter/TerrainType.gd" id="1_hmsed"]
+[ext_resource type="Texture2D" uid="uid://r04cdahy635b" path="res://assets/tiles/dir_1.png" id="2_5csks"]
+
+[resource]
+script = ExtResource("1_hmsed")
+name = "Dirt0"
+editor_color = Color(0.5953369, 0.3438494, 0.09017754, 1)
+sprite = ExtResource("2_5csks")
+metadata/_custom_type_script = "uid://3holhyc85xhm"
