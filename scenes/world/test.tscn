@@ -10,7 +10,7 @@ script = ExtResource("1_37g75")
 world = NodePath("IsometricWorld")
 
 [node name="Camera2D" type="Camera2D" parent="." unique_id=351207082]
-position = Vector2(4, 38)
+position = Vector2(6, 38)
 zoom = Vector2(0.45, 0.45)
 limit_enabled = false
 limit_left = 0
